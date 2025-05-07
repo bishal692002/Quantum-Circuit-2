@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Quantum Circuit Simulator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1 class="header">Quantum Circuit Simulator</h1>
+        <div class="main-content">
+            <div class="gates-panel">
+                <h3>Quantum Gates</h3>
+                <div class="gate-grid">
+                    <div class="gate" data-gate="i" data-info="Identity Gate: I = [1 0; 0 1]" draggable="true">I</div>
+                    <div class="gate" data-gate="x" data-info="Pauli-X Gate: X = [0 1; 1 0]" draggable="true">X</div>
+                    <div class="gate" data-gate="y" data-info="Pauli-Y Gate: Y = [0 -i; i 0]" draggable="true">Y</div>
+                    <div class="gate" data-gate="z" data-info="Pauli-Z Gate: Z = [1 0; 0 -1]" draggable="true">Z</div>
+                    <div class="gate" data-gate="sx" data-info="Square Root of X: √X = 1/2[1+i 1-i; 1-i 1+i]" draggable="true">√X</div>
+                    <div class="gate" data-gate="sy" data-info="Square Root of Y: √Y = 1/2[1+i -1-i; 1-i 1+i]" draggable="true">√Y</div>
+                    <div class="gate" data-gate="s" data-info="Phase Gate (S): S = [1 0; 0 i]" draggable="true">S</div>
+                    <div class="gate" data-gate="t" data-info="π/8 Gate (T): T = [1 0; 0 e^(iπ/4)]" draggable="true">T</div>
+                    <div class="gate" data-gate="h" data-info="Hadamard Gate: H = 1/√2[1 1; 1 -1]" draggable="true">H</div>
+                    <div class="gate" data-gate="cnot" data-info="Controlled-NOT: Two-qubit gate" draggable="true">CNOT</div>
+                    <div class="gate" data-gate="swap" data-info="SWAP Gate: Exchanges two qubits" draggable="true">SWAP</div>
+                    <div class="gate" data-gate="toff" data-info="Toffoli Gate: Three-qubit controlled-NOT" draggable="true">Toff</div>
+                </div>
+                
+                <div class="qubit-controls">
+                    <button id="add-qubit">Add Qubit</button>
+                    <button id="remove-qubit">Remove Qubit</button>
+                    <button id="clear-circuit">Clear Circuit</button>
+                    <div class="qubit-count">Qubits: <span id="qubit-count">4</span></div>
+                </div>
+            </div>
+            
+            <div class="circuit-panel">
+                <div class="qubit-area" id="qubit-area"></div>
+                <div class="circuit-buttons">
+                    <button id="run-circuit">Run Circuit</button>
+                    <button id="download-circuit">Download Circuit</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="histogram-panel">
+            <h3>Measurement Results</h3>
+            <canvas id="measurement-histogram"></canvas>
+            <div class="stats-panel">
+                <div>Circuit Depth: <span id="circuit-depth">0</span></div>
+                <div>Total Gates: <span id="total-gates">0</span></div>
+            </div>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
