@@ -45,10 +45,13 @@
         
         <div class="histogram-panel">
             <h3>Measurement Results</h3>
-            <canvas id="measurement-histogram"></canvas>
+            <canvas id="measurement-histogram" style="height: 400px !important;"></canvas>
             <div class="stats-panel">
                 <div>Circuit Depth: <span id="circuit-depth">0</span></div>
                 <div>Total Gates: <span id="total-gates">0</span></div>
+            </div>
+            <div id="debug-panel" style="margin-top: 10px; padding: 10px; background: #f5f5f5; border-radius: 4px;">
+                <pre id="debug-info" style="margin: 0; white-space: pre-wrap;"></pre>
             </div>
         </div>
     </div>
