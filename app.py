@@ -20,89 +20,96 @@ def simulate():
         num_qubits = data.get('num_qubits', 4)
         
         if not circuit:
-            return jsonify({
-                'success': False,
-                'error': 'Empty circuit'
-            })
+            return jsonify({'success': False, 'error': 'Empty circuit'})
 
+        # Create circuit with classical bits for measurement
         qc = QuantumCircuit(num_qubits, num_qubits)
         
-        # Process gates in order
+        # Process gates from left to right (website's convention)
         for gate in sorted(circuit, key=lambda x: x['position']):
             gate_type = gate['type'].lower()
-            qubit = gate['qubit']
+            qubit = num_qubits - 1 - gate['qubit']  # Reverse qubit ordering to match website
             
-            if qubit >= num_qubits:
-                continue
-            
-            # Apply quantum gates based on type
             try:
                 if gate_type == 'h':
-                    qc.h(qubit)  # Hadamard gate
+                    qc.h(qubit)  # Creates superposition
                 elif gate_type == 'x':
-                    qc.x(qubit)  # Pauli-X gate
+                    qc.x(qubit)  # NOT gate / bit flip
                 elif gate_type == 'y':
-                    qc.y(qubit)  # Pauli-Y gate
+                    qc.y(qubit)  # Pauli-Y rotation
                 elif gate_type == 'z':
-                    qc.z(qubit)  # Pauli-Z gate
-                elif gate_type == 'sx':
-                    qc.sx(qubit)  # Square root of X gate
-                elif gate_type == 'sz':
-                    qc.sz(qubit)  # Square root of Z gate
+                    qc.z(qubit)  # Phase flip
                 elif gate_type == 's':
-                    qc.s(qubit)  # S gate (phase gate)
+                    qc.s(qubit)  # √Z gate
                 elif gate_type == 't':
-                    qc.t(qubit)  # T gate (π/8 gate)
-                elif gate_type == 'tdg':
-                    qc.tdg(qubit)  # T dagger gate
+                    qc.t(qubit)  # π/8 gate
                 elif gate_type == 'cnot':
-                    # For CNOT, we need both control and target qubits
-                    control = qubit
-                    target = (control + 1) % num_qubits  # Target is next qubit
-                    qc.cx(control, target)
+                    if qubit > 0:  # Ensure target qubit exists
+                        control = qubit
+                        target = control - 1  # Target is the qubit below
+                        qc.cx(control, target)
                 elif gate_type == 'swap':
-                    # For SWAP, we need two qubits
-                    first = qubit
-                    second = (first + 1) % num_qubits  # Swap with next qubit
-                    qc.swap(first, second)
-                elif gate_type == 'i':
-                    # Identity gate - does nothing
-                    pass
+                    if qubit > 0:
+                        qc.swap(qubit, qubit - 1)
+                elif gate_type == 'toff':
+                    if qubit > 1:  # Need three qubits
+                        qc.ccx(qubit, qubit - 1, qubit - 2)
             except Exception as e:
-                print(f"Error applying gate {gate_type}: {str(e)}")
+                print(f"Gate error ({gate_type} on {qubit}): {str(e)}")
                 continue
-        
-        # Measure all qubits
+
+        # Measure qubits
         qc.measure_all()
         
-        # Use Aer simulator
+        # Run simulation
         backend = Aer.get_backend('qasm_simulator')
-        transpiled_circuit = transpile(qc, backend)
-        job = backend.run(transpiled_circuit, shots=SIMULATION_SHOTS)
+        job = backend.run(transpile(qc, backend), shots=SIMULATION_SHOTS)
         result = job.result()
         counts = result.get_counts(qc)
-        
+        print(f"Raw counts: {counts}")
+
+        # Format raw states correctly
+        formatted_counts = {}
+        for state, count in counts.items():
+            # Remove spaces and split into groups
+            raw_bits = ''.join(state.split())
+            
+            # Process each bit pair
+            state_bits = []
+            for i in range(0, len(raw_bits), 2):
+                pair = raw_bits[i:i+2]
+                # Add first bit of each pair to state
+                state_bits.append(pair[0])
+            
+            # Create final state with bits in correct qubit order
+            final_state = ''.join(reversed(state_bits[:num_qubits]))
+            formatted_counts[final_state] = formatted_counts.get(final_state, 0) + count
+
+            print(f"State mapping for {state}:")
+            print(f"  Raw bits: {raw_bits}")
+            print(f"  State bits: {state_bits}")
+            print(f"  Final state: {final_state}")
+            print(f"  Count: {count}")
+
         # Ensure all possible states are represented
         all_states = [format(i, f'0{num_qubits}b') for i in range(2**num_qubits)]
-        complete_counts = {state: counts.get(state, 0) for state in all_states}
-        
-        # Format the results for histogram display
-        formatted_counts = {}
-        for state in all_states:
-            # Keep it simple - just use the binary state as key
-            formatted_counts[state] = counts.get(state, 0)
+        complete_counts = {state: formatted_counts.get(state, 0) for state in all_states}
 
+        print(f"Complete state mapping:")
+        print(f"  Raw counts: {counts}")
+        print(f"  Formatted counts: {formatted_counts}")
+        print(f"  Final counts: {complete_counts}")
+        
         return jsonify({
-            'counts': formatted_counts,
+            'counts': complete_counts,
             'success': True,
-            'circuit_depth': qc.depth()
+            'circuit_depth': qc.depth(),
+            'num_qubits': num_qubits
         })
         
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        })
+        print(f"Simulation error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
     app.run(debug=True)

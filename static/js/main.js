@@ -112,13 +112,31 @@ function restoreCircuitState() {
 }
 
 function placeGate(gateType, qubit, position, cell) {
-    // Clear any existing content
+    // Validate gate placement
+    if (!validateGatePlacement(gateType, qubit, position)) {
+        return;
+    }
+
+    // Check for existing gates in the same position
+    if (circuit.some(g => g.position === position && g.qubit === qubit)) {
+        alert('Cannot place overlapping gates');
+        return;
+    }
+
     cell.innerHTML = '';
-    
     const gate = document.createElement('div');
     gate.className = `gate-placed ${gateType.toLowerCase()}`;
     gate.textContent = gateType.toUpperCase();
-    
+
+    // Add visual indicators for multi-qubit gates
+    if (gateType === 'cnot') {
+        addCNOTConnections(gate, qubit);
+    } else if (gateType === 'swap') {
+        addSWAPConnections(gate, qubit);
+    } else if (gateType === 'toff') {
+        addToffoliConnections(gate, qubit);
+    }
+
     // Add color based on gate type
     const gateColors = {
         h: '#1976d2',
@@ -155,6 +173,64 @@ function placeGate(gateType, qubit, position, cell) {
     
     circuit.push({ type: gateType, qubit, position });
     updateCircuitStats();
+}
+
+function addCNOTConnections(gate, qubit) {
+    const control = document.createElement('div');
+    control.className = 'control-point';
+    gate.appendChild(control);
+
+    const target = document.createElement('div');
+    target.className = 'target-point';
+    
+    // Add connection line
+    const connection = document.createElement('div');
+    connection.className = 'gate-connection';
+    connection.style.height = '50px';
+    gate.appendChild(connection);
+}
+
+function addSWAPConnections(gate, qubit) {
+    const connection = document.createElement('div');
+    connection.className = 'gate-connection swap';
+    connection.style.height = '50px';
+    gate.appendChild(connection);
+}
+
+function addToffoliConnections(gate, qubit) {
+    // Add two control points and one target
+    for (let i = 0; i < 2; i++) {
+        const control = document.createElement('div');
+        control.className = 'control-point';
+        control.style.top = `${(i + 1) * 50}px`;
+        gate.appendChild(control);
+    }
+
+    const connection = document.createElement('div');
+    connection.className = 'gate-connection toffoli';
+    connection.style.height = '100px';
+    gate.appendChild(connection);
+}
+
+function validateGatePlacement(gateType, qubit, position) {
+    // Hadamard gate can be placed on any qubit
+    if (gateType === 'h') {
+        return true;
+    }
+    
+    // CNOT and SWAP need two adjacent qubits
+    if ((gateType === 'cnot' || gateType === 'swap') && qubit >= numQubits - 1) {
+        alert(`${gateType.toUpperCase()} gate requires two adjacent qubits`);
+        return false;
+    }
+
+    // Toffoli needs three adjacent qubits
+    if (gateType === 'toff' && qubit >= numQubits - 2) {
+        alert('Toffoli gate requires three adjacent qubits');
+        return false;
+    }
+
+    return true;
 }
 
 function clearCircuit() {
@@ -221,6 +297,7 @@ function runSimulation() {
     })
     .then(response => response.json())
     .then(data => {
+        console.log("Simulation response:", data); // Debug log
         if (data.success) {
             updateHistogram(data);
         } else {
@@ -252,31 +329,53 @@ function updateQubitCount() {
 }
 
 function updateHistogram(data) {
+    if (!data || !data.counts) {
+        console.error('Invalid data received');
+        return;
+    }
+
     const ctx = document.getElementById('measurement-histogram').getContext('2d');
-    
     if (histogramChart) {
         histogramChart.destroy();
     }
-    
-    // Generate all possible states
+
+    // Generate states in proper order
     const states = Array.from({length: Math.pow(2, numQubits)}, (_, i) => 
         i.toString(2).padStart(numQubits, '0')
-    );
-    
-    const values = states.map(state => data.counts[state] || 0);
-    
-    // Format labels to show qubit indices
-    const labels = states.map(state => {
-        const indices = state.split('').map((bit, idx) => `q[${numQubits - 1 - idx}]`).join('');
-        return `${state}=${indices}`;
+    ).sort();
+
+    // Map values maintaining circuit qubit order
+    const values = states.map(state => {
+        // Get count for this state directly - no need to transform
+        return data.counts[state] || 0;
     });
 
+    // Create labels showing qubit indices
+    const labels = states.map(state => {
+        // Split state into individual bits
+        const bits = state.split('');
+        // Create qubit labels with q[0] at bottom
+        const indices = bits.map((_, idx) => `q[${numQubits - 1 - idx}]`);
+        return `${state}=${indices.join('')}`;
+    });
+
+    console.log("State mapping debug:", {
+        incomingStates: Object.keys(data.counts),
+        processedStates: states,
+        counts: data.counts,
+        values,
+        total: values.reduce((a, b) => a + b, 0)
+    });
+
+    const totalShots = values.reduce((a, b) => a + b, 0);
+
+    // Create histogram
     histogramChart = new Chart(ctx, {
         type: 'bar',
         data: {
             labels: labels,
             datasets: [{
-                label: 'Number of Shots',
+                label: 'Shots',
                 data: values,
                 backgroundColor: 'rgba(25, 118, 210, 0.5)',
                 borderColor: 'rgba(25, 118, 210, 1)',
@@ -285,20 +384,11 @@ function updateHistogram(data) {
         },
         options: {
             responsive: true,
+            maintainAspectRatio: false,
             scales: {
                 y: {
                     beginAtZero: true,
-                    max: SIMULATION_SHOTS,
-                    title: {
-                        display: true,
-                        text: 'Number of Shots'
-                    }
-                },
-                x: {
-                    title: {
-                        display: true,
-                        text: 'Quantum States'
-                    }
+                    max: SIMULATION_SHOTS
                 }
             },
             plugins: {
@@ -307,13 +397,26 @@ function updateHistogram(data) {
                         label: function(context) {
                             const shots = context.raw;
                             const probability = (shots / SIMULATION_SHOTS * 100).toFixed(1);
-                            return `Shots: ${shots} (${probability}%)`;
+                            return `${shots} shots (${probability}%)`;
                         }
                     }
                 }
+            },
+            animation: {
+                duration: 0
             }
         }
     });
+
+    // Update debug info
+    document.getElementById('debug-info').textContent = 
+        JSON.stringify({
+            states,
+            values,
+            total: totalShots,
+            expected: SIMULATION_SHOTS,
+            difference: SIMULATION_SHOTS - totalShots
+        }, null, 2);
 }
 
 function updateCircuitStats() {

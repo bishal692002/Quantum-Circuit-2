@@ -266,6 +266,12 @@ body {
     padding: 20px;
     border-radius: 8px;
     margin-top: 30px;
+    height: 500px;  /* Fixed height */
+}
+
+#measurement-histogram {
+    height: 400px !important;
+    max-height: 400px !important;
 }
 
 .histogram-panel h3 {
@@ -346,4 +352,42 @@ body {
 .stats-panel div {
     font-weight: bold;
     color: #1976d2;
+}
+
+.gate-connection {
+    position: absolute;
+    width: 2px;
+    background: #1976d2;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1;
+}
+
+.control-point {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background: #1976d2;
+    border-radius: 50%;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.target-point {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border: 2px solid #1976d2;
+    border-radius: 50%;
+    left: 50%;
+    transform: translate(-50%, 40px);
+}
+
+.gate-placed.cnot .gate-connection,
+.gate-placed.swap .gate-connection {
+    height: 50px;
+}
+
+.gate-placed.toff .gate-connection {
+    height: 100px;
 }
