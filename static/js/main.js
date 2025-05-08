@@ -423,3 +423,40 @@ function updateCircuitStats() {
     document.getElementById('total-gates').textContent = circuit.length;
     document.getElementById('circuit-depth').textContent = Math.max(...circuit.map(gate => gate.position), 0);
 }
+
+// Theme switching logic
+function initTheme() {
+    const themeToggle = document.getElementById('theme-toggle');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    
+    // Set initial theme based on user preference
+    document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+    updateThemeIcon(prefersDark);
+    
+    themeToggle.addEventListener('click', () => {
+        const currentTheme = document.documentElement.getAttribute('data-theme');
+        const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+        
+        document.documentElement.setAttribute('data-theme', newTheme);
+        updateThemeIcon(newTheme === 'dark');
+        
+        // Save theme preference
+        localStorage.setItem('theme', newTheme);
+    });
+}
+
+function updateThemeIcon(isDark) {
+    const sunIcon = document.querySelector('.sun-icon');
+    const moonIcon = document.querySelector('.moon-icon');
+    
+    if (isDark) {
+        sunIcon.style.display = 'block';
+        moonIcon.style.display = 'none';
+    } else {
+        sunIcon.style.display = 'none';
+        moonIcon.style.display = 'block';
+    }
+}
+
+// Call initTheme when DOM is loaded
+document.addEventListener('DOMContentLoaded', initTheme);
