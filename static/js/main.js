@@ -101,26 +101,80 @@ function handleGateDrop(e) {
 }
 
 function restoreCircuitState() {
-    circuit.forEach(gate => {
+    // Sort circuit by position for consistent restoration
+    const sortedCircuit = [...circuit].sort((a, b) => a.position - b.position);
+    
+    // Clear all cells first to avoid conflicts
+    document.querySelectorAll('.circuit-cell').forEach(cell => {
+        cell.innerHTML = '';
+    });
+
+    // Restore gates
+    sortedCircuit.forEach(gate => {
         const cell = document.querySelector(
             `.circuit-cell[data-qubit="${gate.qubit}"][data-position="${gate.position}"]`
         );
         if (cell) {
-            placeGate(gate.type, gate.qubit, gate.position, cell);
+            // Store current circuit state
+            const tempCircuit = [...circuit];
+            // Clear circuit temporarily to avoid duplicate checks
+            circuit = [];
+            // Place gate with all its original properties
+            placeGate(gate.type, gate.qubit, gate.position, cell, gate.target, gate.control2);
+            // Restore remaining gates
+            circuit = tempCircuit;
         }
     });
+
+    updateCircuitStats();
 }
 
-function placeGate(gateType, qubit, position, cell) {
+function removeGateFromCircuit(qubit, position) {
+    const index = circuit.findIndex(gate => gate.qubit === qubit && gate.position === position);
+    if (index > -1) {
+        circuit.splice(index, 1);
+        updateCircuitStats();
+    }
+}
+
+function placeGate(gateType, qubit, position, cell, existingTarget = null, existingControl2 = null) {
     // Validate gate placement
     if (!validateGatePlacement(gateType, qubit, position)) {
         return;
     }
 
-    // Check for existing gates in the same position
-    if (circuit.some(g => g.position === position && g.qubit === qubit)) {
-        alert('Cannot place overlapping gates');
-        return;
+    // Remove any existing gate at this position first
+    removeGateFromCircuit(qubit, position);
+
+    // For multi-qubit gates, get target selection
+    let gateObj = {
+        type: gateType,
+        qubit: qubit,
+        position: position
+    };
+
+    if (['cnot', 'swap'].includes(gateType.toLowerCase()) && numQubits >= 2) {
+        const targetQubit = existingTarget !== null ? 
+            existingTarget : 
+            prompt(`Enter target qubit number (0 to ${numQubits-1}, different from ${qubit}):`);
+        
+        if (!validateTwoQubitGate(qubit, parseInt(targetQubit))) {
+            return;
+        }
+        gateObj.target = parseInt(targetQubit);
+    } else if (gateType === 'toff' && numQubits >= 3) {
+        const targetQubit = existingTarget !== null ? 
+            existingTarget : 
+            prompt(`Enter target qubit number (0 to ${numQubits-1}):`);
+        const control2 = existingControl2 !== null ? 
+            existingControl2 : 
+            prompt(`Enter second control qubit number (0 to ${numQubits-1}):`);
+            
+        if (!validateToffoliQubits(qubit, parseInt(control2), parseInt(targetQubit))) {
+            return;
+        }
+        gateObj.target = parseInt(targetQubit);
+        gateObj.control2 = parseInt(control2);
     }
 
     cell.innerHTML = '';
@@ -130,11 +184,11 @@ function placeGate(gateType, qubit, position, cell) {
 
     // Add visual indicators for multi-qubit gates
     if (gateType === 'cnot') {
-        addCNOTConnections(gate, qubit);
+        addCNOTConnections(gate, qubit, gateObj.target);
     } else if (gateType === 'swap') {
-        addSWAPConnections(gate, qubit);
+        addSWAPConnections(gate, qubit, gateObj.target);
     } else if (gateType === 'toff') {
-        addToffoliConnections(gate, qubit);
+        addToffoliConnections(gate, qubit, gateObj.control2, gateObj.target);
     }
 
     // Add color based on gate type
@@ -171,65 +225,65 @@ function placeGate(gateType, qubit, position, cell) {
         gate.style.transform = 'scale(1)';
     }, 50);
     
-    circuit.push({ type: gateType, qubit, position });
+    circuit.push(gateObj);
     updateCircuitStats();
 }
 
-function addCNOTConnections(gate, qubit) {
-    const control = document.createElement('div');
-    control.className = 'control-point';
-    gate.appendChild(control);
-
-    const target = document.createElement('div');
-    target.className = 'target-point';
-    
-    // Add connection line
+function addCNOTConnections(gate, control, target) {
     const connection = document.createElement('div');
     connection.className = 'gate-connection';
-    connection.style.height = '50px';
+    connection.style.height = Math.abs(target - control) * 50 + 'px';
     gate.appendChild(connection);
+
+    const controlPoint = document.createElement('div');
+    controlPoint.className = 'control-point';
+    gate.appendChild(controlPoint);
+
+    const targetPoint = document.createElement('div');
+    targetPoint.className = 'target-point';
+    targetPoint.style.top = (target > control ? '100%' : '-20px');
+    gate.appendChild(targetPoint);
 }
 
-function addSWAPConnections(gate, qubit) {
-    const connection = document.createElement('div');
-    connection.className = 'gate-connection swap';
-    connection.style.height = '50px';
-    gate.appendChild(connection);
-}
-
-function addToffoliConnections(gate, qubit) {
-    // Add two control points and one target
-    for (let i = 0; i < 2; i++) {
-        const control = document.createElement('div');
-        control.className = 'control-point';
-        control.style.top = `${(i + 1) * 50}px`;
-        gate.appendChild(control);
+function validateTwoQubitGate(control, target) {
+    target = parseInt(target);
+    const maxIndex = numQubits - 1;
+    
+    if (isNaN(target) || target < 0 || target > maxIndex || target === control) {
+        alert(`Invalid target qubit. Must be between 0 and ${maxIndex}, excluding ${control}`);
+        return false;
     }
+    return true;
+}
 
-    const connection = document.createElement('div');
-    connection.className = 'gate-connection toffoli';
-    connection.style.height = '100px';
-    gate.appendChild(connection);
+function validateToffoliQubits(control1, control2, target) {
+    if (isNaN(control2) || isNaN(target) || 
+        new Set([control1, control2, target]).size !== 3 ||
+        Math.min(control1, control2, target) < 0 ||
+        Math.max(control1, control2, target) >= numQubits) {
+        alert(`Invalid qubit selection. Must be three different values between 0 and ${numQubits-1}`);
+        return false;
+    }
+    return true;
 }
 
 function validateGatePlacement(gateType, qubit, position) {
-    // Hadamard gate can be placed on any qubit
-    if (gateType === 'h') {
+    // Single qubit gates can be placed anywhere
+    if (!['cnot', 'swap', 'toff'].includes(gateType.toLowerCase())) {
         return true;
     }
     
-    // CNOT and SWAP need two adjacent qubits
-    if ((gateType === 'cnot' || gateType === 'swap') && qubit >= numQubits - 1) {
-        alert(`${gateType.toUpperCase()} gate requires two adjacent qubits`);
+    // Check if enough qubits for multi-qubit gates
+    if (gateType === 'toff' && numQubits < 3) {
+        alert('Toffoli gate requires at least 3 qubits');
         return false;
     }
-
-    // Toffoli needs three adjacent qubits
-    if (gateType === 'toff' && qubit >= numQubits - 2) {
-        alert('Toffoli gate requires three adjacent qubits');
+    
+    if ((gateType === 'cnot' || gateType === 'swap') && numQubits < 2) {
+        alert(`${gateType.toUpperCase()} gate requires at least 2 qubits`);
         return false;
     }
-
+    
     return true;
 }
 
@@ -265,11 +319,21 @@ function addQubit() {
 
 function removeQubit() {
     if (numQubits > MIN_QUBITS) {
-        // Store current circuit without the last qubit's gates
-        circuit = circuit.filter(gate => gate.qubit < numQubits - 1);
+        const lastQubitIndex = numQubits - 1;
+        
+        // Remove all gates involving the last qubit
+        circuit = circuit.filter(gate => {
+            const involvedQubits = [gate.qubit];
+            if (gate.target !== undefined) involvedQubits.push(gate.target);
+            if (gate.control2 !== undefined) involvedQubits.push(gate.control2);
+            
+            // Keep gate if it doesn't involve the last qubit
+            return !involvedQubits.includes(lastQubitIndex);
+        });
+        
         numQubits--;
         initializeCircuit();
-        restoreCircuitState(circuit);
+        restoreCircuitState();
         updateQubitCount();
     } else {
         alert(`Minimum ${MIN_QUBITS} qubit required`);
@@ -369,37 +433,78 @@ function updateHistogram(data) {
 
     const totalShots = values.reduce((a, b) => a + b, 0);
 
+    // Normalize values to 0-100 scale
+    const maxValue = Math.max(...values);
+    const normalizedValues = values.map(value => 
+        maxValue > 0 ? Math.round((value / SIMULATION_SHOTS) * 100) : value
+    );
+
     // Create histogram
     histogramChart = new Chart(ctx, {
         type: 'bar',
         data: {
             labels: labels,
             datasets: [{
-                label: 'Shots',
-                data: values,
-                backgroundColor: 'rgba(25, 118, 210, 0.5)',
-                borderColor: 'rgba(25, 118, 210, 1)',
-                borderWidth: 1
+                label: 'Probability (%)',
+                data: normalizedValues,
+                backgroundColor: '#fbbf24',
+                borderColor: '#f59e0b',
+                borderWidth: 1,
+                barThickness: 40,
+                maxBarThickness: 40,
+                minBarLength: 2
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            layout: {
+                padding: {
+                    top: 30,
+                    bottom: 10
+                }
+            },
             scales: {
                 y: {
                     beginAtZero: true,
-                    max: SIMULATION_SHOTS
+                    max: 100,
+                    grid: {
+                        color: '#e5e5e5',
+                        drawBorder: false
+                    },
+                    ticks: {
+                        font: {
+                            size: 14
+                        },
+                        stepSize: 20,
+                        callback: function(value) {
+                            return value + '%';
+                        }
+                    }
+                },
+                x: {
+                    grid: {
+                        display: false
+                    },
+                    ticks: {
+                        font: {
+                            size: 12
+                        }
+                    }
                 }
             },
             plugins: {
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            const shots = context.raw;
-                            const probability = (shots / SIMULATION_SHOTS * 100).toFixed(1);
-                            return `${shots} shots (${probability}%)`;
+                            const percentage = context.raw;
+                            const actualCount = values[context.dataIndex];
+                            return `${actualCount} shots (${percentage}%)`;
                         }
                     }
+                },
+                legend: {
+                    display: false
                 }
             },
             animation: {
