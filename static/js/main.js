@@ -101,14 +101,32 @@ function handleGateDrop(e) {
 }
 
 function restoreCircuitState() {
-    circuit.forEach(gate => {
+    // Sort circuit by position for consistent restoration
+    const sortedCircuit = [...circuit].sort((a, b) => a.position - b.position);
+    
+    // Clear all cells first to avoid conflicts
+    document.querySelectorAll('.circuit-cell').forEach(cell => {
+        cell.innerHTML = '';
+    });
+
+    // Restore gates
+    sortedCircuit.forEach(gate => {
         const cell = document.querySelector(
             `.circuit-cell[data-qubit="${gate.qubit}"][data-position="${gate.position}"]`
         );
         if (cell) {
-            placeGate(gate.type, gate.qubit, gate.position, cell);
+            // Store current circuit state
+            const tempCircuit = [...circuit];
+            // Clear circuit temporarily to avoid duplicate checks
+            circuit = [];
+            // Place gate with all its original properties
+            placeGate(gate.type, gate.qubit, gate.position, cell, gate.target, gate.control2);
+            // Restore remaining gates
+            circuit = tempCircuit;
         }
     });
+
+    updateCircuitStats();
 }
 
 function removeGateFromCircuit(qubit, position) {
@@ -119,45 +137,45 @@ function removeGateFromCircuit(qubit, position) {
     }
 }
 
-function placeGate(gateType, qubit, position, cell) {
-    // Get target qubit selection if needed
-    const needsTarget = ['cnot', 'swap', 'toff'].includes(gateType.toLowerCase());
-    let targetQubit = null;
-    let control2 = null;
-    
-    if (needsTarget) {
-        if (gateType === 'toff') {
-            // For Toffoli, get two additional qubits
-            targetQubit = prompt('Enter target qubit number (0 to ' + (numQubits-1) + '):');
-            control2 = prompt('Enter second control qubit number (0 to ' + (numQubits-1) + '):');
-            if (!validateToffoliQubits(qubit, parseInt(control2), parseInt(targetQubit))) {
-                return;
-            }
-        } else {
-            // For CNOT and SWAP
-            targetQubit = prompt('Enter target qubit number (0 to ' + (numQubits-1) + '):');
-            if (!validateTwoQubitGate(qubit, parseInt(targetQubit))) {
-                return;
-            }
-        }
+function placeGate(gateType, qubit, position, cell, existingTarget = null, existingControl2 = null) {
+    // Validate gate placement
+    if (!validateGatePlacement(gateType, qubit, position)) {
+        return;
     }
 
-    // Create gate object with target information
-    const gateObj = {
+    // Remove any existing gate at this position first
+    removeGateFromCircuit(qubit, position);
+
+    // For multi-qubit gates, get target selection
+    let gateObj = {
         type: gateType,
         qubit: qubit,
         position: position
     };
 
-    if (targetQubit !== null) {
+    if (['cnot', 'swap'].includes(gateType.toLowerCase()) && numQubits >= 2) {
+        const targetQubit = existingTarget !== null ? 
+            existingTarget : 
+            prompt(`Enter target qubit number (0 to ${numQubits-1}, different from ${qubit}):`);
+        
+        if (!validateTwoQubitGate(qubit, parseInt(targetQubit))) {
+            return;
+        }
         gateObj.target = parseInt(targetQubit);
-    }
-    if (control2 !== null) {
+    } else if (gateType === 'toff' && numQubits >= 3) {
+        const targetQubit = existingTarget !== null ? 
+            existingTarget : 
+            prompt(`Enter target qubit number (0 to ${numQubits-1}):`);
+        const control2 = existingControl2 !== null ? 
+            existingControl2 : 
+            prompt(`Enter second control qubit number (0 to ${numQubits-1}):`);
+            
+        if (!validateToffoliQubits(qubit, parseInt(control2), parseInt(targetQubit))) {
+            return;
+        }
+        gateObj.target = parseInt(targetQubit);
         gateObj.control2 = parseInt(control2);
     }
-
-    // Remove any existing gate at this position first
-    removeGateFromCircuit(qubit, position);
 
     cell.innerHTML = '';
     const gate = document.createElement('div');
@@ -166,11 +184,11 @@ function placeGate(gateType, qubit, position, cell) {
 
     // Add visual indicators for multi-qubit gates
     if (gateType === 'cnot') {
-        addCNOTConnections(gate, qubit);
+        addCNOTConnections(gate, qubit, gateObj.target);
     } else if (gateType === 'swap') {
-        addSWAPConnections(gate, qubit);
+        addSWAPConnections(gate, qubit, gateObj.target);
     } else if (gateType === 'toff') {
-        addToffoliConnections(gate, qubit);
+        addToffoliConnections(gate, qubit, gateObj.control2, gateObj.target);
     }
 
     // Add color based on gate type
@@ -211,9 +229,28 @@ function placeGate(gateType, qubit, position, cell) {
     updateCircuitStats();
 }
 
+function addCNOTConnections(gate, control, target) {
+    const connection = document.createElement('div');
+    connection.className = 'gate-connection';
+    connection.style.height = Math.abs(target - control) * 50 + 'px';
+    gate.appendChild(connection);
+
+    const controlPoint = document.createElement('div');
+    controlPoint.className = 'control-point';
+    gate.appendChild(controlPoint);
+
+    const targetPoint = document.createElement('div');
+    targetPoint.className = 'target-point';
+    targetPoint.style.top = (target > control ? '100%' : '-20px');
+    gate.appendChild(targetPoint);
+}
+
 function validateTwoQubitGate(control, target) {
-    if (isNaN(target) || target < 0 || target >= numQubits || target === control) {
-        alert('Invalid target qubit selection');
+    target = parseInt(target);
+    const maxIndex = numQubits - 1;
+    
+    if (isNaN(target) || target < 0 || target > maxIndex || target === control) {
+        alert(`Invalid target qubit. Must be between 0 and ${maxIndex}, excluding ${control}`);
         return false;
     }
     return true;
@@ -224,67 +261,29 @@ function validateToffoliQubits(control1, control2, target) {
         new Set([control1, control2, target]).size !== 3 ||
         Math.min(control1, control2, target) < 0 ||
         Math.max(control1, control2, target) >= numQubits) {
-        alert('Invalid qubit selection for Toffoli gate');
+        alert(`Invalid qubit selection. Must be three different values between 0 and ${numQubits-1}`);
         return false;
     }
     return true;
 }
 
-function addCNOTConnections(gate, qubit) {
-    const control = document.createElement('div');
-    control.className = 'control-point';
-    gate.appendChild(control);
-
-    const target = document.createElement('div');
-    target.className = 'target-point';
-    
-    // Add connection line
-    const connection = document.createElement('div');
-    connection.className = 'gate-connection';
-    connection.style.height = '50px';
-    gate.appendChild(connection);
-}
-
-function addSWAPConnections(gate, qubit) {
-    const connection = document.createElement('div');
-    connection.className = 'gate-connection swap';
-    connection.style.height = '50px';
-    gate.appendChild(connection);
-}
-
-function addToffoliConnections(gate, qubit) {
-    // Add two control points and one target
-    for (let i = 0; i < 2; i++) {
-        const control = document.createElement('div');
-        control.className = 'control-point';
-        control.style.top = `${(i + 1) * 50}px`;
-        gate.appendChild(control);
-    }
-
-    const connection = document.createElement('div');
-    connection.className = 'gate-connection toffoli';
-    connection.style.height = '100px';
-    gate.appendChild(connection);
-}
-
 function validateGatePlacement(gateType, qubit, position) {
-    // Hadamard gate can be placed on any qubit
-    if (gateType === 'h') {
+    // Single qubit gates can be placed anywhere
+    if (!['cnot', 'swap', 'toff'].includes(gateType.toLowerCase())) {
         return true;
     }
     
-    // CNOT and SWAP need two adjacent qubits
-    if ((gateType === 'cnot' || gateType === 'swap') && qubit >= numQubits - 1) {
-        alert(`${gateType.toUpperCase()} gate requires two adjacent qubits`);
+    // Check if enough qubits for multi-qubit gates
+    if (gateType === 'toff' && numQubits < 3) {
+        alert('Toffoli gate requires at least 3 qubits');
         return false;
     }
-
-    // Toffoli needs three adjacent qubits
-    if (gateType === 'toff' && qubit >= numQubits - 2) {
-        alert('Toffoli gate requires three adjacent qubits');
+    
+    if ((gateType === 'cnot' || gateType === 'swap') && numQubits < 2) {
+        alert(`${gateType.toUpperCase()} gate requires at least 2 qubits`);
         return false;
     }
-
+    
     return true;
 }
 
@@ -320,11 +319,21 @@ function addQubit() {
 
 function removeQubit() {
     if (numQubits > MIN_QUBITS) {
-        // Store current circuit without the last qubit's gates
-        circuit = circuit.filter(gate => gate.qubit < numQubits - 1);
+        const lastQubitIndex = numQubits - 1;
+        
+        // Remove all gates involving the last qubit
+        circuit = circuit.filter(gate => {
+            const involvedQubits = [gate.qubit];
+            if (gate.target !== undefined) involvedQubits.push(gate.target);
+            if (gate.control2 !== undefined) involvedQubits.push(gate.control2);
+            
+            // Keep gate if it doesn't involve the last qubit
+            return !involvedQubits.includes(lastQubitIndex);
+        });
+        
         numQubits--;
         initializeCircuit();
-        restoreCircuitState(circuit);
+        restoreCircuitState();
         updateQubitCount();
     } else {
         alert(`Minimum ${MIN_QUBITS} qubit required`);
