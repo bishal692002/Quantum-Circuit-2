@@ -230,18 +230,88 @@ function placeGate(gateType, qubit, position, cell, existingTarget = null, exist
 }
 
 function addCNOTConnections(gate, control, target) {
+    // Create connection line
     const connection = document.createElement('div');
     connection.className = 'gate-connection';
     connection.style.height = Math.abs(target - control) * 50 + 'px';
     gate.appendChild(connection);
 
+    // Add control point
     const controlPoint = document.createElement('div');
     controlPoint.className = 'control-point';
+    controlPoint.style.position = 'absolute';
+    controlPoint.style.top = '50%';
     gate.appendChild(controlPoint);
 
+    // Add target point
     const targetPoint = document.createElement('div');
     targetPoint.className = 'target-point';
     targetPoint.style.top = (target > control ? '100%' : '-20px');
+    gate.appendChild(targetPoint);
+}
+
+function addSWAPConnections(gate, qubit1, qubit2) {
+    // Create wrapper to hold the line
+    const wrapper = document.createElement('div');
+    wrapper.className = 'connection-wrapper';
+    
+    // Add connection line first
+    const connection = document.createElement('div');
+    connection.className = 'gate-connection';
+    connection.style.height = Math.abs(qubit2 - qubit1) * 50 + 'px';
+    wrapper.appendChild(connection);
+    
+    // Insert wrapper before any other content
+    gate.insertBefore(wrapper, gate.firstChild);
+
+    // Add SWAP symbols after
+    const topSymbol = document.createElement('div');
+    topSymbol.className = 'swap-symbol';
+    topSymbol.innerHTML = '×';
+    topSymbol.style.position = 'absolute';
+    topSymbol.style.left = '50%';
+    topSymbol.style.transform = 'translateX(-50%)';
+    topSymbol.style.top = qubit2 > qubit1 ? '-10px' : 'calc(100% - 10px)';
+    gate.appendChild(topSymbol);
+
+    const bottomSymbol = document.createElement('div');
+    bottomSymbol.className = 'swap-symbol';
+    bottomSymbol.innerHTML = '×';
+    bottomSymbol.style.position = 'absolute';
+    bottomSymbol.style.left = '50%';
+    bottomSymbol.style.transform = 'translateX(-50%)';
+    bottomSymbol.style.top = qubit2 > qubit1 ? 'calc(100% - 10px)' : '-10px';
+    gate.appendChild(bottomSymbol);
+}
+
+function addToffoliConnections(gate, control1, control2, target) {
+    // Create wrapper to hold the line
+    const wrapper = document.createElement('div');
+    wrapper.className = 'connection-wrapper';
+    
+    // Add connection line first
+    const connection = document.createElement('div');
+    connection.className = 'gate-connection';
+    const minQubit = Math.min(control1, control2, target);
+    const maxQubit = Math.max(control1, control2, target);
+    connection.style.height = (maxQubit - minQubit) * 50 + 'px';
+    wrapper.appendChild(connection);
+    
+    // Insert wrapper before any other content
+    gate.insertBefore(wrapper, gate.firstChild);
+
+    // Add control points after
+    [control1, control2].forEach(controlQubit => {
+        const controlPoint = document.createElement('div');
+        controlPoint.className = 'control-point';
+        controlPoint.style.top = (controlQubit - minQubit) * 50 + 'px';
+        gate.appendChild(controlPoint);
+    });
+
+    // Add target point after
+    const targetPoint = document.createElement('div');
+    targetPoint.className = 'target-point';
+    targetPoint.style.top = (target - minQubit) * 50 + 'px';
     gate.appendChild(targetPoint);
 }
 
@@ -414,14 +484,8 @@ function updateHistogram(data) {
         return data.counts[state] || 0;
     });
 
-    // Create labels showing qubit indices
-    const labels = states.map(state => {
-        // Split state into individual bits
-        const bits = state.split('');
-        // Create qubit labels with q[0] at bottom
-        const indices = bits.map((_, idx) => `q[${numQubits - 1 - idx}]`);
-        return `${state}=${indices.join('')}`;
-    });
+    // Create labels showing state values
+    const labels = states.map(state => state);  // Just use the state value directly
 
     console.log("State mapping debug:", {
         incomingStates: Object.keys(data.counts),
