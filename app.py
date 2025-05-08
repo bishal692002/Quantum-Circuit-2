@@ -28,32 +28,39 @@ def simulate():
         # Process gates from left to right (website's convention)
         for gate in sorted(circuit, key=lambda x: x['position']):
             gate_type = gate['type'].lower()
-            qubit = num_qubits - 1 - gate['qubit']  # Reverse qubit ordering to match website
+            qubit = num_qubits - 1 - gate['qubit']  # Primary qubit
+            target = gate.get('target')  # Get target qubit if specified
             
             try:
-                if gate_type == 'h':
-                    qc.h(qubit)  # Creates superposition
-                elif gate_type == 'x':
-                    qc.x(qubit)  # NOT gate / bit flip
-                elif gate_type == 'y':
-                    qc.y(qubit)  # Pauli-Y rotation
-                elif gate_type == 'z':
-                    qc.z(qubit)  # Phase flip
-                elif gate_type == 's':
-                    qc.s(qubit)  # √Z gate
-                elif gate_type == 't':
-                    qc.t(qubit)  # π/8 gate
-                elif gate_type == 'cnot':
-                    if qubit > 0:  # Ensure target qubit exists
-                        control = qubit
-                        target = control - 1  # Target is the qubit below
-                        qc.cx(control, target)
-                elif gate_type == 'swap':
-                    if qubit > 0:
-                        qc.swap(qubit, qubit - 1)
+                if gate_type in ['i', 'h', 'x', 'y', 'z', 's', 't', 'sx', 'sy']:
+                    getattr(qc, gate_type)(qubit)
+                
+                elif gate_type == 'cnot' and target is not None:
+                    target_qubit = num_qubits - 1 - target
+                    if 0 <= target_qubit < num_qubits and target_qubit != qubit:
+                        qc.cx(qubit, target_qubit)
+                    else:
+                        raise ValueError(f"Invalid CNOT: control={qubit}, target={target_qubit}")
+                
+                elif gate_type == 'swap' and target is not None:
+                    target_qubit = num_qubits - 1 - target
+                    if 0 <= target_qubit < num_qubits and target_qubit != qubit:
+                        qc.swap(qubit, target_qubit)
+                    else:
+                        raise ValueError(f"Invalid SWAP: q1={qubit}, q2={target_qubit}")
+                
                 elif gate_type == 'toff':
-                    if qubit > 1:  # Need three qubits
-                        qc.ccx(qubit, qubit - 1, qubit - 2)
+                    control2 = gate.get('control2')
+                    if target is not None and control2 is not None:
+                        target_qubit = num_qubits - 1 - target
+                        control2_qubit = num_qubits - 1 - control2
+                        if (0 <= target_qubit < num_qubits and 
+                            0 <= control2_qubit < num_qubits and 
+                            len({qubit, control2_qubit, target_qubit}) == 3):
+                            qc.ccx(qubit, control2_qubit, target_qubit)
+                        else:
+                            raise ValueError("Invalid Toffoli configuration")
+                        
             except Exception as e:
                 print(f"Gate error ({gate_type} on {qubit}): {str(e)}")
                 continue
@@ -66,29 +73,29 @@ def simulate():
         job = backend.run(transpile(qc, backend), shots=SIMULATION_SHOTS)
         result = job.result()
         counts = result.get_counts(qc)
+        print(f"Circuit state after simulation:")
+        print(f"Expected: Approximately 50% |01⟩ and 50% |10⟩")
         print(f"Raw counts: {counts}")
-
+        
         # Format raw states correctly
         formatted_counts = {}
         for state, count in counts.items():
             # Remove spaces and split into groups
             raw_bits = ''.join(state.split())
             
-            # Process each bit pair
-            state_bits = []
-            for i in range(0, len(raw_bits), 2):
-                pair = raw_bits[i:i+2]
-                # Add first bit of each pair to state
-                state_bits.append(pair[0])
+            # Convert to list and take only the first num_qubits bits
+            state_bits = list(raw_bits[:num_qubits])
             
-            # Create final state with bits in correct qubit order
-            final_state = ''.join(reversed(state_bits[:num_qubits]))
+            # Reverse the bits to match the desired qubit ordering
+            # This ensures q0 is rightmost, q1 is second from right, etc.
+            state_bits.reverse()
+            final_state = ''.join(state_bits)
+            
             formatted_counts[final_state] = formatted_counts.get(final_state, 0) + count
 
             print(f"State mapping for {state}:")
             print(f"  Raw bits: {raw_bits}")
-            print(f"  State bits: {state_bits}")
-            print(f"  Final state: {final_state}")
+            print(f"  Final state (q0 rightmost): {final_state}")
             print(f"  Count: {count}")
 
         # Ensure all possible states are represented

@@ -120,9 +120,40 @@ function removeGateFromCircuit(qubit, position) {
 }
 
 function placeGate(gateType, qubit, position, cell) {
-    // Validate gate placement
-    if (!validateGatePlacement(gateType, qubit, position)) {
-        return;
+    // Get target qubit selection if needed
+    const needsTarget = ['cnot', 'swap', 'toff'].includes(gateType.toLowerCase());
+    let targetQubit = null;
+    let control2 = null;
+    
+    if (needsTarget) {
+        if (gateType === 'toff') {
+            // For Toffoli, get two additional qubits
+            targetQubit = prompt('Enter target qubit number (0 to ' + (numQubits-1) + '):');
+            control2 = prompt('Enter second control qubit number (0 to ' + (numQubits-1) + '):');
+            if (!validateToffoliQubits(qubit, parseInt(control2), parseInt(targetQubit))) {
+                return;
+            }
+        } else {
+            // For CNOT and SWAP
+            targetQubit = prompt('Enter target qubit number (0 to ' + (numQubits-1) + '):');
+            if (!validateTwoQubitGate(qubit, parseInt(targetQubit))) {
+                return;
+            }
+        }
+    }
+
+    // Create gate object with target information
+    const gateObj = {
+        type: gateType,
+        qubit: qubit,
+        position: position
+    };
+
+    if (targetQubit !== null) {
+        gateObj.target = parseInt(targetQubit);
+    }
+    if (control2 !== null) {
+        gateObj.control2 = parseInt(control2);
     }
 
     // Remove any existing gate at this position first
@@ -176,8 +207,27 @@ function placeGate(gateType, qubit, position, cell) {
         gate.style.transform = 'scale(1)';
     }, 50);
     
-    circuit.push({ type: gateType, qubit, position });
+    circuit.push(gateObj);
     updateCircuitStats();
+}
+
+function validateTwoQubitGate(control, target) {
+    if (isNaN(target) || target < 0 || target >= numQubits || target === control) {
+        alert('Invalid target qubit selection');
+        return false;
+    }
+    return true;
+}
+
+function validateToffoliQubits(control1, control2, target) {
+    if (isNaN(control2) || isNaN(target) || 
+        new Set([control1, control2, target]).size !== 3 ||
+        Math.min(control1, control2, target) < 0 ||
+        Math.max(control1, control2, target) >= numQubits) {
+        alert('Invalid qubit selection for Toffoli gate');
+        return false;
+    }
+    return true;
 }
 
 function addCNOTConnections(gate, qubit) {
@@ -374,37 +424,78 @@ function updateHistogram(data) {
 
     const totalShots = values.reduce((a, b) => a + b, 0);
 
+    // Normalize values to 0-100 scale
+    const maxValue = Math.max(...values);
+    const normalizedValues = values.map(value => 
+        maxValue > 0 ? Math.round((value / SIMULATION_SHOTS) * 100) : value
+    );
+
     // Create histogram
     histogramChart = new Chart(ctx, {
         type: 'bar',
         data: {
             labels: labels,
             datasets: [{
-                label: 'Shots',
-                data: values,
-                backgroundColor: 'rgba(25, 118, 210, 0.5)',
-                borderColor: 'rgba(25, 118, 210, 1)',
-                borderWidth: 1
+                label: 'Probability (%)',
+                data: normalizedValues,
+                backgroundColor: '#fbbf24',
+                borderColor: '#f59e0b',
+                borderWidth: 1,
+                barThickness: 40,
+                maxBarThickness: 40,
+                minBarLength: 2
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            layout: {
+                padding: {
+                    top: 30,
+                    bottom: 10
+                }
+            },
             scales: {
                 y: {
                     beginAtZero: true,
-                    max: SIMULATION_SHOTS
+                    max: 100,
+                    grid: {
+                        color: '#e5e5e5',
+                        drawBorder: false
+                    },
+                    ticks: {
+                        font: {
+                            size: 14
+                        },
+                        stepSize: 20,
+                        callback: function(value) {
+                            return value + '%';
+                        }
+                    }
+                },
+                x: {
+                    grid: {
+                        display: false
+                    },
+                    ticks: {
+                        font: {
+                            size: 12
+                        }
+                    }
                 }
             },
             plugins: {
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            const shots = context.raw;
-                            const probability = (shots / SIMULATION_SHOTS * 100).toFixed(1);
-                            return `${shots} shots (${probability}%)`;
+                            const percentage = context.raw;
+                            const actualCount = values[context.dataIndex];
+                            return `${actualCount} shots (${percentage}%)`;
                         }
                     }
+                },
+                legend: {
+                    display: false
                 }
             },
             animation: {
