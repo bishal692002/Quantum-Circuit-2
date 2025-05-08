@@ -111,17 +111,22 @@ function restoreCircuitState() {
     });
 }
 
+function removeGateFromCircuit(qubit, position) {
+    const index = circuit.findIndex(gate => gate.qubit === qubit && gate.position === position);
+    if (index > -1) {
+        circuit.splice(index, 1);
+        updateCircuitStats();
+    }
+}
+
 function placeGate(gateType, qubit, position, cell) {
     // Validate gate placement
     if (!validateGatePlacement(gateType, qubit, position)) {
         return;
     }
 
-    // Check for existing gates in the same position
-    if (circuit.some(g => g.position === position && g.qubit === qubit)) {
-        alert('Cannot place overlapping gates');
-        return;
-    }
+    // Remove any existing gate at this position first
+    removeGateFromCircuit(qubit, position);
 
     cell.innerHTML = '';
     const gate = document.createElement('div');
