@@ -68,6 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('remove-qubit').addEventListener('click', removeQubit);
     document.getElementById('clear-circuit').addEventListener('click', clearCircuit);
     document.getElementById('run-circuit').addEventListener('click', runSimulation);
+    document.getElementById('download-circuit').addEventListener('click', downloadCircuit); // Add this line
 });
 
 function setupGateListeners() {
@@ -445,17 +446,64 @@ function runSimulation() {
 }
 
 function downloadCircuit() {
-    const data = {
-        circuit,
-        num_qubits: numQubits
+    // Create circuit description
+    const circuitData = {
+        circuit_description: circuit.map((gate, index) => {
+            let description = `${index + 1}. ${gate.type.toUpperCase()} gate on q[${gate.qubit}]`;
+            if (gate.target !== undefined) {
+                if (gate.type.toLowerCase() === 'cnot') {
+                    description = `${index + 1}. ${gate.type.toUpperCase()} with q[${gate.qubit}] as control, q[${gate.target}] as target`;
+                } else if (gate.type.toLowerCase() === 'swap') {
+                    description = `${index + 1}. ${gate.type.toUpperCase()} between q[${gate.qubit}] and q[${gate.target}]`;
+                } else if (gate.type.toLowerCase() === 'toff') {
+                    description = `${index + 1}. ${gate.type.toUpperCase()} with q[${gate.qubit}] and q[${gate.control2}] as controls, q[${gate.target}] as target`;
+                }
+            }
+            return description;
+        }),
+        expected_output: []
     };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'quantum_circuit.json';
-    a.click();
-    URL.revokeObjectURL(url);
+
+    // Add measurement results if available
+    if (histogramChart) {
+        const data = histogramChart.data;
+        const measurementResults = data.labels.map((state, index) => {
+            const percentage = data.datasets[0].data[index];
+            const shots = Math.round((percentage / 100) * SIMULATION_SHOTS);
+            return `- |${state}⟩: ~${percentage}% (approximately ${shots} shots)`;
+        });
+        circuitData.expected_output = measurementResults;
+    }
+
+    // Add explanation based on circuit configuration
+    let explanation = "Explanation: ";
+    if (circuit.length === 0) {
+        explanation += "Empty circuit";
+    } else if (circuit.length === 2 && 
+               circuit[0].type.toLowerCase() === 'h' && 
+               circuit[1].type.toLowerCase() === 'cnot') {
+        explanation += "Creates maximally entangled Bell state";
+    } else {
+        explanation += "Custom quantum circuit configuration";
+    }
+    circuitData.explanation = explanation;
+
+    // Convert to string with proper formatting
+    const circuitText = 
+        "Circuit:\n" + 
+        circuitData.circuit_description.join('\n') + 
+        "\n\nExpected Output:\n" + 
+        circuitData.expected_output.join('\n') + 
+        "\n\n" + circuitData.explanation;
+
+    // Create and trigger download
+    const element = document.createElement('a');
+    element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(circuitText));
+    element.setAttribute('download', 'quantum_circuit_description.txt');
+    element.style.display = 'none';
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
 }
 
 function updateQubitCount() {
